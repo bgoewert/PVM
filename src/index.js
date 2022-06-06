@@ -2,7 +2,9 @@
 
 import * as php from "./php.js";
 import * as fpm from "./fpm.js";
-import * as commander from "commander";
+import * as nginx from "./nginx.js";
+import * as color from "./color.js";
+import commander from "commander";
 import packageConfig from "../package.json" assert {type: 'json'};
 
 
@@ -11,15 +13,11 @@ if (process.argv.length === 2) {
 }
 
 const renderStatus = () => {
-  console.log("\x1b[32m%s\x1b[0m \x1b[33m%s\x1b[0m", "PHP Version Manager", packageConfig.version);
+  console.log(color.blue("PHP Version Manager") + " " + color.green(packageConfig.version));
 
-  const version = php.current();
-  const cli = php.moduleStatus(version, "cli", "xdebug");
-  const fpm = php.moduleStatus(version, "fpm", "xdebug");
-
-  const phpText = "PHP: \x1b[33m" + version + "\x1b[0m";
-  const cliText = "CLI: " + (cli ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m");
-  const fpmText = "FPM: " + (fpm ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m");
+  const phpText = "PHP: " + color.green(php.current());
+  const cliText = "CLI: " + (php.status() ? color.green("ON") : color.red("OFF"));
+  const fpmText = "FPM: " + (fpm.status() ? color.green("ON" + (nginx.status() == 'running' ? "\x1b[32m(Nginx)\x1b[0m" : "")) : color.red("OFF"));
 
   console.log([phpText, cliText, fpmText].join("\n"));
 };
@@ -34,7 +32,7 @@ program
     "output the current application version"
   )
   .usage("[command] [options]")
-  .description("\x1b[32m%s\x1b[0m %s \x1b[33m%s\x1b[0m", "PHP Version Manager", "version \n", packageConfig.version);
+  .description(color.blue("PHP Version Manager") + " " + color.yellow(packageConfig.version));
 
 program
   .command("status")
@@ -53,7 +51,7 @@ program
     const currentVersion = php.current();
     php.versions().forEach(version => {
       if (version === currentVersion) {
-        console.log("\x1b[32m%s\x1b[0m", version);
+        console.log(color.green(version));
       } else {
         console.log(version);
       }
@@ -67,11 +65,20 @@ program
   .alias("u")
   .description("Switch PHP version")
   .action(version => {
-    if (/^\d\d$/.test(version)) {
+    
+    // Validate version
+    let strVersion = toString(version);
+    if (strVersion.length == 2 && !strVersion.includes('.')) {
+      console.log('Version incorrect: ' + version);
       version = version.slice(0, 1) + "." + version.slice(1);
+      console.log('Updated version: ' + version);
+    } else if (strVersion.length > 2 && strVersion.length < 2 && !strVersion.includes('.')){
+      console.log('Invalid version: ' + version);
+      return false;
     }
-
-    if (php.use(version)) {
+    
+    // Switch version and restart relevant services
+    if (php.use(version) && fpm.status()) {
       console.log("Restarting PHP-FPM and NGINX");
       fpm.restart();
     }
